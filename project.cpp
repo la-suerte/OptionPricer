@@ -28,6 +28,8 @@ class Option{
             return stm;
         }
         virtual bool isAsian(){return false;};
+
+        virtual double getStrike() const = 0;
         
 
 };
@@ -42,11 +44,11 @@ class EuropeanVanillaOption : public Option{
         double _strike;
     public:
         EuropeanVanillaOption(double e, double s) : Option(e >= 0 ? e : 0), _strike(s >= 0 ? s : 0){}
-        virtual optionType GetOptionType() = 0;
+        virtual optionType getOptionType() const = 0;
 
         virtual double payoff(double d) = 0; 
 
-        double getStrike()
+        double getStrike() const override
         {
             return _strike;
         }
@@ -66,7 +68,7 @@ class CallOption : public EuropeanVanillaOption{
                 return 0;
         }
 
-        optionType GetOptionType() override{
+        optionType getOptionType() const override{
             return call;
         }
 };
@@ -81,14 +83,14 @@ class PutOption : public EuropeanVanillaOption{
             else
                 return 0;
         }
-        optionType GetOptionType() override{
+        optionType getOptionType() const override{
             return put;
         }
 };
 
 class BlackScholesPricer {
     private:
-        EuropeanVanillaOption* option;
+        Option* option;
         double asset_price;
         double interest_rate;
         double volatility;
@@ -98,19 +100,47 @@ class BlackScholesPricer {
         {
             return std::erfc(-a / std::sqrt(2)) / 2;
         }
+        BlackScholesPricer(EuropeanDigitalOption* opt, double ap, double ir, double vol):option(opt),asset_price(ap),interest_rate(ir),volatility(vol){}
 
         double operator()()
         {
-            double d1 = (log(asset_price/option->getStrike())+(interest_rate + 0.5*volatility*volatility)*option->getExpiry())/(volatility*std::sqrt(option->getExpiry()));
-            double d2 = d1 - volatility*std::sqrt(option->getExpiry()); // d2 = d1 - σ√T
-            if(option->GetOptionType() == call)
+            double T = option->getExpiry();
+            double S = asset_price;
+            double r = interest_rate;
+            double sigma = volatility;
+
+            EuropeanVanillaOption* vanilla = dynamic_cast<EuropeanVanillaOption*>(option);
+            if(vanilla)
             {
-                return asset_price*N(d1) - option->getStrike()*std::exp(-1*interest_rate*option->getExpiry())*N(d2); 
+                double K = vanilla->getStrike();
+                double d1 = (log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*std::sqrt(T));
+                double d2 = d1 - sigma*std::sqrt(T);
+                
+                if (vanilla->getOptionType() == call) {
+                    return S*N(d1) - K*std::exp(-r*T)*N(d2);
+                } else {  // put
+                    return K*std::exp(-r*T)*N(-d2) - S*N(-d1);
+                }
             }
-            else
+
+            EuropeanDigitalOption* digital = dynamic_cast<EuropeanDigitalOption*>(option);
+            if(digital)
             {
-                return  option->getStrike()*std::exp(-1*interest_rate*option->getExpiry())*N(-1*d2) - asset_price*N(-1*d1);
+                double K = digital->getStrike();
+                double d1 = (log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*std::sqrt(T));
+                double d2 = d1 - sigma*std::sqrt(T);
+                
+                if(digital->getOptionType() == call)
+                {
+                    return std::exp(-r*T)*N(d2);
+                }
+                else // put
+                {
+                    return std::exp(-r*T)*N(-d2);
+                }
             }
+            return 0.0;
+
         }
 
         double delta()
@@ -120,36 +150,42 @@ class BlackScholesPricer {
             double S = asset_price;
             double r = interest_rate;
             double sigma = volatility;
-            
-            double d1 = (log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*std::sqrt(T));
-            
-            if(option->GetOptionType() == call)
+            EuropeanVanillaOption* vanilla = dynamic_cast<EuropeanVanillaOption*>(option);
+            if(vanilla)
             {
-                return N(d1);
+                double d1 = (log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*std::sqrt(T));
+                if(vanilla->getOptionType() == call)
+                {
+                    return N(d1);
+                }
+                else // put
+                {
+                    return N(d1)-1;
+                }
             }
-            else // put
-            {
-                return N(d1) - 1.0;
+            EuropeanDigitalOption* digital = dynamic_cast<EuropeanDigitalOption*>(option);
+            if (digital) {
+                double d1 = (log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*std::sqrt(T));
+                double d2 = d1 - sigma*std::sqrt(T);
+                double pdf = (1.0 / std::sqrt(2.0 * M_PI)) * std::exp(-0.5 * d2 * d2);
+                double delta = (std::exp(-r*T)*pdf)/(sigma*S*std::sqrt(T));
+                if(digital->getOptionType() == call)
+                {
+                    return delta;
+                }
+                else // put
+                {
+                    return -delta;
+                }
             }
+            return 0.0;
         }
 };
 
-        //C=S N(d1​)−Ke−rtN(d2​)
-        //d1​=​ln(S/K)​+(r+σv 2/2​​)t​ / σs sqrt ​t​
-        //d2 =d1​−σs sqrt ​t
-        //C = SP N(d1) - ST e-rt N(d2)
-        //P = ST e-rt N(-d2) - SP e-dt N(-d1)
-
-/*
-int main(){
-    CallOption call(1.0, 100.0);  
-    BlackScholesPricer pricer(&call, 100.0, 0.05, 0.2);
-    cout<<"Option price"<<pricer()<<" | "<<"Delta "<<pricer.delta();
-}
-*/
 //====================================================== PART 2A ======================================================
 
 template<typename T>
+
 class BinaryTree{
     private:
         int _depth;
@@ -249,7 +285,6 @@ class BinaryTree{
             }
         }
     };
-
 
 class CRRPricer{
     private:    
@@ -373,7 +408,6 @@ class CRRPricer{
         }
 };
 
-
 //====================================================== PART 2B ======================================================
 
 class EuropeanDigitalOption : public Option
@@ -384,7 +418,7 @@ class EuropeanDigitalOption : public Option
         EuropeanDigitalOption(double exp, double s) : Option(exp),_strike(s) {}
         virtual optionType getOptionType() const = 0;
         virtual double payoff(double d) = 0;
-        double getStrike()
+        double getStrike() const override
         {
             return _strike;
         }
@@ -405,6 +439,7 @@ class DigitalPutOption : public EuropeanDigitalOption{
             return put;
         }
 
+
 };
 
 class DigitalCallOption : public EuropeanDigitalOption{
@@ -423,27 +458,6 @@ class DigitalCallOption : public EuropeanDigitalOption{
             return call;
         }
 };
-
-int main() {
-    double K = 100.0;
-    DigitalCallOption call(1.0, K);
-    DigitalPutOption put(1.0, K);
-
-    double z1 = 100.0; // at-the-strike
-    double z2 = 99.0;
-    double z3 = 101.0;
-
-    std::cout << "Call payoff at z=100: " << call.payoff(z1) << "\n"; // 1
-    std::cout << "Put payoff at z=100:  " << put.payoff(z1)  << "\n"; // 1
-
-    std::cout << "Call payoff at z=99:  " << call.payoff(z2) << "\n"; // 0
-    std::cout << "Put payoff at z=99:   " << put.payoff(z2)  << "\n"; // 1
-
-    std::cout << "Call payoff at z=101: " << call.payoff(z3) << "\n"; // 1
-    std::cout << "Put payoff at z=101:  " << put.payoff(z3)  << "\n"; // 0
-
-    return 0;
-}
 
 //====================================================== PART 3 ======================================================
 
