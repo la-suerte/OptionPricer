@@ -876,6 +876,7 @@ int main() {
     cout << "European Digital Put:  " << mcDigPut() << endl;
     cout << "  95% CI:              [" << ciDigPut[0] << ", " << ciDigPut[1] << "]" << endl;
     
+    
     // Asian Put
     AsianPutOption asianPut(timeSteps, K);
     BlackScholesMCPricer mcAsianPut(&asianPut, S0, r, vol);
