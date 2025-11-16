@@ -8,6 +8,8 @@
 
 using namespace std;
 
+//====================================================== PART 1 ======================================================
+
 
 class Option{
     private:
@@ -18,17 +20,15 @@ class Option{
         {
             return _expiry;
         }
-        virtual double payoff(double d) = 0; //Improve?
+        virtual double payoff(double d) = 0; 
 
         virtual double payoffPath( std::vector<double> d){
             return payoff(d[d.size()-1]);
-        };
+        }
 
-        virtual bool isAsian(){return false;};
+        virtual bool isAsianOption(){return false;};
 
-        virtual double getStrike() const = 0;
-        
-
+        virtual bool isAmericanOption(){return false;};
 };
 
 enum optionType{
@@ -37,21 +37,18 @@ enum optionType{
 };
 
 class EuropeanVanillaOption : public Option{
+    //friends:
+        friend class CallOption;
+        friend class PutOption;
+        friend class BlackScholesPricer;
+
     private:
         double _strike;
     public:
         EuropeanVanillaOption(double e, double s) : Option(e >= 0 ? e : 0), _strike(s >= 0 ? s : 0){}
-        virtual optionType getOptionType() const = 0;
+        virtual optionType GetOptionType() const = 0;
 
-        virtual double payoff(double d) = 0; 
-
-        double getStrike() const override
-        {
-            return _strike;
-        }
-
-        friend class BlackScholesPricer;
-    
+        virtual double payoff(double d) = 0;
 };
 
 class CallOption : public EuropeanVanillaOption{
@@ -59,13 +56,13 @@ class CallOption : public EuropeanVanillaOption{
         CallOption(double e, double s):EuropeanVanillaOption(e,s){}
         double payoff(double z) override
         {
-            if(z>getStrike())
-                return z-getStrike();
+            if(z>_strike)
+                return z-_strike;
             else
                 return 0;
         }
 
-        optionType getOptionType() const override{
+        optionType GetOptionType() const override{
             return call;
         }
 };
@@ -75,12 +72,12 @@ class PutOption : public EuropeanVanillaOption{
         PutOption(double e, double s):EuropeanVanillaOption(e,s){}
         double payoff(double z) override
         {
-            if(getStrike()>z)
-                return getStrike()-z;
+            if(_strike>z)
+                return _strike-z;
             else
                 return 0;
         }
-        optionType getOptionType() const override{
+        optionType GetOptionType() const override{
             return put;
         }
 };
@@ -90,29 +87,30 @@ class PutOption : public EuropeanVanillaOption{
 
 class EuropeanDigitalOption : public Option
 {
+    //friends:
+        friend class EuropeanDigitalPutOption;
+        friend class EuropeanDigitalCallOption;
+        friend class BlackScholesPricer;
+
     private:
         double _strike;
     public:
         EuropeanDigitalOption(double exp, double s) : Option(exp),_strike(s) {}
-        virtual optionType getOptionType() const = 0;
+        virtual optionType GetOptionType() const = 0;
         virtual double payoff(double d) = 0;
-        double getStrike() const override
-        {
-            return _strike;
-        }
 };
 
-class DigitalPutOption : public EuropeanDigitalOption{
+class EuropeanDigitalPutOption : public EuropeanDigitalOption{
     public:
-        DigitalPutOption(double exp, double s) : EuropeanDigitalOption(exp, s){} ;
+        EuropeanDigitalPutOption(double exp, double s) : EuropeanDigitalOption(exp, s){} ;
         double payoff(double z) override
         {
-            if(z<=getStrike())
+            if(z<=_strike)
                 return 1.0;
             else
                 return 0;
         }
-        optionType getOptionType() const override
+        optionType GetOptionType() const override
         {
             return put;
         }
@@ -120,18 +118,18 @@ class DigitalPutOption : public EuropeanDigitalOption{
 
 };
 
-class DigitalCallOption : public EuropeanDigitalOption{
+class EuropeanDigitalCallOption : public EuropeanDigitalOption{
     public:
-        DigitalCallOption(double e, double s):EuropeanDigitalOption(e,s){}
+        EuropeanDigitalCallOption(double e, double s):EuropeanDigitalOption(e,s){}
         double payoff(double z) override
         {
-            if(z>=getStrike())
+            if(z>=_strike)
                 return 1.0;
             else
                 return 0;
         }
 
-        optionType getOptionType() const override
+        optionType GetOptionType() const override
         {
             return call;
         }
@@ -161,11 +159,11 @@ class BlackScholesPricer {
             EuropeanVanillaOption* vanilla = dynamic_cast<EuropeanVanillaOption*>(option);
             if(vanilla)
             {
-                double K = vanilla->getStrike();
+                double K = vanilla->_strike;
                 double d1 = (log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*std::sqrt(T));
                 double d2 = d1 - sigma*std::sqrt(T);
                 
-                if (vanilla->getOptionType() == call) {
+                if (vanilla->GetOptionType() == call) {
                     return S*N(d1) - K*std::exp(-r*T)*N(d2);
                 } else {  // put
                     return K*std::exp(-r*T)*N(-d2) - S*N(-d1);
@@ -175,11 +173,11 @@ class BlackScholesPricer {
             EuropeanDigitalOption* digital = dynamic_cast<EuropeanDigitalOption*>(option);
             if(digital)
             {
-                double K = digital->getStrike();
+                double K = digital->_strike;
                 double d1 = (log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*std::sqrt(T));
                 double d2 = d1 - sigma*std::sqrt(T);
                 
-                if(digital->getOptionType() == call)
+                if(digital->GetOptionType() == call)
                 {
                     return std::exp(-r*T)*N(d2);
                 }
@@ -195,15 +193,15 @@ class BlackScholesPricer {
         double delta()
         {
             double T = option->getExpiry();
-            double K = option->getStrike();
             double S = asset_price;
             double r = interest_rate;
             double sigma = volatility;
             EuropeanVanillaOption* vanilla = dynamic_cast<EuropeanVanillaOption*>(option);
             if(vanilla)
             {
+                double K = vanilla->_strike;
                 double d1 = (log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*std::sqrt(T));
-                if(vanilla->getOptionType() == call)
+                if(vanilla->GetOptionType() == call)
                 {
                     return N(d1);
                 }
@@ -214,11 +212,12 @@ class BlackScholesPricer {
             }
             EuropeanDigitalOption* digital = dynamic_cast<EuropeanDigitalOption*>(option);
             if (digital) {
+                double K = digital->_strike;
                 double d1 = (log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*std::sqrt(T));
                 double d2 = d1 - sigma*std::sqrt(T);
                 double pdf = (1.0 / std::sqrt(2.0 * M_PI)) * std::exp(-0.5 * d2 * d2);
                 double delta = (std::exp(-r*T)*pdf)/(sigma*S*std::sqrt(T));
-                if(digital->getOptionType() == call)
+                if(digital->GetOptionType() == call)
                 {
                     return delta;
                 }
@@ -346,14 +345,15 @@ class CRRPricer{
         BinaryTree<double>* _tree;
         bool computed;
         bool closed_form = false;
+        BinaryTree<bool>* exercised = nullptr;
     public:
         CRRPricer(Option* option, int depth, double asset_price, double up,double down, double interest_rate)
         {
-            if(option->isAsian())
+            if(option->isAsianOption())
             {
                 throw std::invalid_argument("Le CRRPricer ne peut pas pricer une option asiatique.");
             }
-            if(up>(1+interest_rate) && (1+interest_rate)>down)
+            if(up>interest_rate && interest_rate>down)
             {
                 this->asset_price = asset_price;
                 this->up = up;
@@ -362,6 +362,11 @@ class CRRPricer{
                 this->N = depth;
                 this->option = option;
                 _tree = new BinaryTree<double>();
+                if(option->isAmericanOption())
+                {
+                    exercised = new BinaryTree<bool>();
+                    exercised->setDepth(N);
+                }
                 _tree->setDepth(N);
                 computed = false;
             }
@@ -374,37 +379,83 @@ class CRRPricer{
                 this->N = depth;
                 this->option = option;
                 _tree = new BinaryTree<double>();
-                _tree->setDepth(0);
+                if(option->isAmericanOption())
+                {
+                    exercised = new BinaryTree<bool>(); 
+                    exercised->setDepth(N);
+                }
+                _tree->setDepth(N);
                 computed = false;
             }
         }
+        
+        CRRPricer(Option* option, int depth, double asset_price, double r, double volatility)
+        {
+            this->option = option;
+            this->N = depth;
+            this->asset_price= asset_price;
+
+            double up = 0.0;
+            double h = option->getExpiry()/N;
+            double exponent = (r+(std::pow(volatility,2)/2))*h + volatility* std::sqrt(h);
+            this->up = std::exp(exponent) -1;
+            exponent = (r+(std::pow(volatility,2)/2))*h - volatility* std::sqrt(h);
+            this->down = std::exp(exponent)-1;
+            this->interest_rate = std::exp(r*h)-1;
+            _tree = new BinaryTree<double>();
+            if(option->isAmericanOption())
+            {
+                exercised = new BinaryTree<bool>();
+                exercised->setDepth(N);
+            }
+            _tree->setDepth(N);
+            computed = false;
+
+        }
+        
+        bool getExercise(int a, int b)
+        {
+            return exercised->getNode(a,b);
+        }
+
         double max(double a, double b)
         {
             if(a>b)
                 return a;
             return b;
         }
-        void compute() //only for a call
+        
+
+        void compute() 
         {
             double S0 = asset_price;
             double St;
             for(int i = 0 ; i <= N ; i++)
             {
-                St = S0 * pow(up,i)*pow(down,N-i);
+                St = S0 * pow(1+up,i)*pow(1+down,N-i);
                 _tree->setNode(N,i,option->payoff(St));
             }
-            double q = ((1+interest_rate)-down)/(up-down);
-
+            double q = ((interest_rate)-down)/(up-down);
 
             for(int i = N-1 ; i >= 0 ; i--)
             {
                 for(int j = 0 ; j <= i ; j++)
                 {
                     double value = (q*_tree->getNode(i+1,j+1)+(1-q)*_tree->getNode(i+1,j))/(1+interest_rate);
-                    _tree->setNode(i,j, value);
+                    if(!option->isAmericanOption())
+                        _tree->setNode(i,j, value);
+                    else{
+                        double St_current = option->payoff(S0*std::pow(1+up,j)*std::pow(1+down,i-j));
+                        _tree->setNode(i,j,max(value,St_current));
+                        if(value<=St_current)
+                        {
+                            exercised->setNode(i,j,true);
+                        }
+                        else
+                            exercised->setNode(i,j,false);
+                    }
                 }
             }
-            
             computed = true;
         }
         double get(int a, int b)
@@ -429,7 +480,7 @@ class CRRPricer{
                 if(closed_form)
                 {
                     double sum = 0.0;
-                    double q = ((1+interest_rate)-down)/(up-down);
+                    double q = ((interest_rate)-down)/(up-down);
                     for(int i = 0 ; i<=N ; i++)
                     {
                         double coef = fact(N)/(fact(i)*fact(N-i));
@@ -445,21 +496,21 @@ class CRRPricer{
             if(_tree != nullptr) {
                 delete _tree;
             }
+            delete exercised;
         }
         void display_tree()
         {
             _tree->display();
         }
 
-        bool checkAsianOption()
-        {
-
-        }
 };
 
 //====================================================== PART 3 ======================================================
 
 class AsianOption : public Option{
+    //friends:
+        friend class AsianCallOption;
+        friend class AsianPutOption;
     private:
         std::vector<double> time_steps;
         double _strike;
@@ -470,12 +521,6 @@ class AsianOption : public Option{
         {
             return time_steps;
         }
-
-        double getStrike() const override
-        {
-            return _strike;
-        }
-
         double payoffPath(std::vector<double> St) override
         {
             double sum = 0.0;
@@ -489,7 +534,7 @@ class AsianOption : public Option{
 
         virtual double payoff(double S) = 0;
         
-        bool isAsian() override
+        bool isAsianOption() override
         {
             return true;
         }
@@ -498,12 +543,12 @@ class AsianOption : public Option{
 
 class AsianCallOption : public AsianOption{
     public:
-        AsianCallOption(vector<double> ts, double e, double k) : AsianOption(ts, e, k) {}
+        AsianCallOption(vector<double> ts, double k) : AsianOption(ts, ts.back(), k) {}
 
         double payoff(double underlying)
         {
-            if(underlying>getStrike())
-                return underlying - getStrike();
+            if(underlying>_strike)
+                return underlying - _strike;
             else
                 return 0;
         }
@@ -511,22 +556,23 @@ class AsianCallOption : public AsianOption{
 
 class AsianPutOption : public AsianOption{
     public:
-        AsianPutOption(vector<double> ts, double e, double k) : AsianOption(ts, e, k) {}
+        AsianPutOption(vector<double> ts, double k) : AsianOption(ts, ts.back(), k) {}
 
         double payoff(double underlying)
         {
-            if(underlying<getStrike())
-                return getStrike() - underlying;
+            if(underlying<_strike)
+                return _strike - underlying;
             else
                 return 0;
         }
 };
 
 class MT{
-    private: //mt19937 is a random number generator is a random seed
+    private:
         static std::mt19937& get_generator() 
         {
-            static std::mt19937 gen(std::random_device{}()); //static this line runs only the first time get_gen is called
+            static std::random_device rd;
+            static std::mt19937 gen(rd());
             return gen;
         }
     
@@ -570,7 +616,7 @@ class BlackScholesMCPricer{
             {
                 double payoff;
 
-                if(option->isAsian())
+                if(option->isAsianOption())
                 {
                     AsianOption* asian = dynamic_cast<AsianOption*>(option);
                     vector<double> timeSteps = asian->getTimeSteps();
@@ -633,371 +679,299 @@ class BlackScholesMCPricer{
             result.push_back(estimate + margin);
             return result;
         }
-
 };
 
+//====================================================== PART 4 ======================================================
+
+class AmericanOption : public Option {
+    //friends:
+        friend class AmericanCallOption;
+        friend class AmericanPutOption;
+
+    private:
+        double _strike;
+    public:
+        AmericanOption(double e, double s) : _strike(s) , Option(e) {}
+        bool isAmericanOption() override
+        {
+            return true; 
+        };
+        virtual double payoff(double St) = 0;
+};
+
+class AmericanCallOption : public AmericanOption{
+    public:
+        AmericanCallOption(double e, double s) : AmericanOption(e,s){}
+
+        double payoff(double St) override
+        {
+            if(St>_strike)
+                return St-_strike;
+            else 
+                return 0.0;
+        }
+        optionType GetOptionType()
+        {
+            return call;
+        }
+};
+
+class AmericanPutOption : public AmericanOption{
+    public:
+        AmericanPutOption(double e, double s) : AmericanOption(e,s){}
+
+        double payoff(double St) override
+        {
+            if(St<_strike)
+                return _strike -St;
+            else 
+                return 0.0;
+        }
+        optionType GetOptionType()
+        {
+            return put;
+        }
+};
 
 int main() {
-    cout << "============================================" << endl;
-    cout << "   COMPREHENSIVE OPTIONS PRICING TEST" << endl;
-    cout << "============================================" << endl << endl;
-
-    // Test parameters
-    double S0 = 100.0;      // Initial stock price
-    double K = 100.0;       // Strike price
-    double T = 1.0;         // Expiry (1 year)
-    double r = 0.05;        // Risk-free rate (5%)
-    double sigma = 0.2;     // Volatility (20%)
+    // Parameters
+    double T = 5.0;
+    double S0 = 100.0;
+    double r = 0.01;
+    double vol = 0.1;
+    double K = 101.0;
+    double R = 0.01;
+    double U = 0.05;
+    double D = -0.045;
+    int N = 5;
     
-    // CRR parameters
-    int N = 10;             // Tree depth
-    double u = 1.1;         // Up factor
-    double d = 0.9;         // Down factor
+    cout << "========================================" << endl;
+    cout << "OPTION PRICING TEST" << endl;
+    cout << "========================================" << endl;
+    cout << "Parameters:" << endl;
+    cout << "  T = " << T << endl;
+    cout << "  S0 = " << S0 << endl;
+    cout << "  r = " << r << endl;
+    cout << "  vol = " << vol << endl;
+    cout << "  K = " << K << endl;
+    cout << "  R = " << R << endl;
+    cout << "  U = " << U << endl;
+    cout << "  D = " << D << endl;
+    cout << "  N = " << N << endl;
+    cout << "========================================\n" << endl;
 
-    try {
-        // ==================== PART 1: EUROPEAN VANILLA OPTIONS ====================
-        cout << "==================== PART 1: EUROPEAN VANILLA OPTIONS ====================" << endl << endl;
-        
-        // Test European Call Option
-        cout << "--- Testing European Call Option ---" << endl;
-        CallOption* euroCall = new CallOption(T, K);
-        cout << "Created CallOption with expiry=" << euroCall->getExpiry() 
-             << ", strike=" << euroCall->getStrike() << endl;
-        
-        // Test payoff
-        double testPrice1 = 110.0;
-        double testPrice2 = 90.0;
-        cout << "Payoff at S=" << testPrice1 << ": " << euroCall->payoff(testPrice1) << endl;
-        cout << "Payoff at S=" << testPrice2 << ": " << euroCall->payoff(testPrice2) << endl;
-        cout << "Option type: " << (euroCall->getOptionType() == call ? "CALL" : "PUT") << endl;
-        cout << "Is Asian? " << (euroCall->isAsian() ? "YES" : "NO") << endl;
-        
-        // Test European Put Option
-        cout << "\n--- Testing European Put Option ---" << endl;
-        PutOption* euroPut = new PutOption(T, K);
-        cout << "Created PutOption with expiry=" << euroPut->getExpiry() 
-             << ", strike=" << euroPut->getStrike() << endl;
-        cout << "Payoff at S=" << testPrice1 << ": " << euroPut->payoff(testPrice1) << endl;
-        cout << "Payoff at S=" << testPrice2 << ": " << euroPut->payoff(testPrice2) << endl;
-        cout << "Option type: " << (euroPut->getOptionType() == call ? "CALL" : "PUT") << endl;
-        
-        // Test Black-Scholes Pricer
-        cout << "\n--- Testing Black-Scholes Pricer ---" << endl;
-        BlackScholesPricer bsCall(euroCall, S0, r, sigma);
-        double bsCallPrice = bsCall();
-        double bsCallDelta = bsCall.delta();
-        cout << "BS Call Price: " << bsCallPrice << endl;
-        cout << "BS Call Delta: " << bsCallDelta << endl;
-        
-        BlackScholesPricer bsPut(euroPut, S0, r, sigma);
-        double bsPutPrice = bsPut();
-        double bsPutDelta = bsPut.delta();
-        cout << "BS Put Price: " << bsPutPrice << endl;
-        cout << "BS Put Delta: " << bsPutDelta << endl;
-        
-        // Verify Put-Call Parity: C - P = S - K*e^(-rT)
-        double parity = bsCallPrice - bsPutPrice;
-        double expected_parity = S0 - K * exp(-r * T);
-        cout << "\nPut-Call Parity Check:" << endl;
-        cout << "C - P = " << parity << endl;
-        cout << "S - K*e^(-rT) = " << expected_parity << endl;
-        cout << "Difference: " << abs(parity - expected_parity) << " (should be ~0)" << endl;
+    // ============================================================
+    // CRR PRICING
+    // ============================================================
+    cout << "CRR PRICING (Binomial Tree)" << endl;
+    cout << "----------------------------------------" << endl;
+    
+    // European Call
+    CallOption eurCall(T, K);
+    CRRPricer crrEurCall(&eurCall, N, S0, U, D, R);
+    cout << "European Call:         " << crrEurCall() << endl;
+    
+    // European Digital Call
+    EuropeanDigitalCallOption eurDigCall(T, K);
+    CRRPricer crrDigCall(&eurDigCall, N, S0, U, D, R);
+    cout << "European Digital Call: " << crrDigCall() << endl;
+    
+    // American Call
+    AmericanCallOption amCall(T, K);
+    CRRPricer crrAmCall(&amCall, N, S0, U, D, R);
+    cout << "American Call:         " << crrAmCall() << endl;
+    
+    // European Put
+    PutOption eurPut(T, K);
+    CRRPricer crrEurPut(&eurPut, N, S0, U, D, R);
+    cout << "European Put:          " << crrEurPut() << endl;
+    
+    // European Digital Put
+    EuropeanDigitalPutOption eurDigPut(T, K);
+    CRRPricer crrDigPut(&eurDigPut, N, S0, U, D, R);
+    cout << "European Digital Put:  " << crrDigPut() << endl;
+    
+    // American Put
+    AmericanPutOption amPut(T, K);
+    CRRPricer crrAmPut(&amPut, N, S0, U, D, R);
+    cout << "American Put:          " << crrAmPut() << endl;
+    
+    cout << endl;
 
-        // ==================== PART 2A: CRR BINOMIAL TREE ====================
-        cout << "\n==================== PART 2A: CRR BINOMIAL TREE ====================" << endl << endl;
-        
-        cout << "--- Testing CRR Pricer for Call Option ---" << endl;
-        CRRPricer crrCall(euroCall, N, S0, u, d, r);
-        cout << "Created CRRPricer with N=" << N << ", S0=" << S0 
-             << ", u=" << u << ", d=" << d << ", r=" << r << endl;
-        
-        cout << "\nComputing CRR tree..." << endl;
-        crrCall.compute();
-        double crrCallPrice = crrCall();
-        cout << "CRR Call Price (via tree): " << crrCallPrice << endl;
-        
-        double crrCallPriceClosed = crrCall(true);
-        cout << "CRR Call Price (closed form): " << crrCallPriceClosed << endl;
-        cout << "Difference: " << abs(crrCallPrice - crrCallPriceClosed) << " (should be ~0)" << endl;
-        
-        cout << "\nComparing CRR vs Black-Scholes:" << endl;
-        cout << "CRR Price: " << crrCallPrice << endl;
-        cout << "BS Price: " << bsCallPrice << endl;
-        cout << "Difference: " << abs(crrCallPrice - bsCallPrice) << endl;
-        cout << "(Note: CRR converges to BS as N→∞)" << endl;
-        
-        cout << "\n--- Testing CRR Pricer for Put Option ---" << endl;
-        CRRPricer crrPut(euroPut, N, S0, u, d, r);
-        crrPut.compute();
-        double crrPutPrice = crrPut();
-        cout << "CRR Put Price: " << crrPutPrice << endl;
-        cout << "BS Put Price: " << bsPutPrice << endl;
-        cout << "Difference: " << abs(crrPutPrice - bsPutPrice) << endl;
-        
-        // Display tree structure (small example)
-        cout << "\n--- Displaying CRR Tree (first few nodes) ---" << endl;
-        CRRPricer smallTreeCall(euroCall, 3, S0, u, d, r);
-        smallTreeCall.compute();
-        smallTreeCall.display_tree();
+    // ============================================================
+    // BLACK-SCHOLES PRICING (Closed Form)
+    // ============================================================
+    cout << "BLACK-SCHOLES PRICER (Closed Form)" << endl;
+    cout << "----------------------------------------" << endl;
+    
+    // European Call
+    BlackScholesPricer bsEurCall(&eurCall, S0, r, vol);
+    cout << "European Call:         " << bsEurCall() << endl;
+    cout << "  Delta:               " << bsEurCall.delta() << endl;
+    
+    // European Digital Call
+    BlackScholesPricer bsDigCall(&eurDigCall, S0, r, vol);
+    cout << "European Digital Call: " << bsDigCall() << endl;
+    cout << "  Delta:               " << bsDigCall.delta() << endl;
+    
+    // European Put
+    BlackScholesPricer bsEurPut(&eurPut, S0, r, vol);
+    cout << "European Put:          " << bsEurPut() << endl;
+    cout << "  Delta:               " << bsEurPut.delta() << endl;
+    
+    // European Digital Put
+    BlackScholesPricer bsDigPut(&eurDigPut, S0, r, vol);
+    cout << "European Digital Put:  " << bsDigPut() << endl;
+    cout << "  Delta:               " << bsDigPut.delta() << endl;
+    
+    cout << "\nWARNING: Black-Scholes cannot price American options (no closed form)" << endl;
+    cout << endl;
 
-        // ==================== PART 2B: DIGITAL OPTIONS ====================
-        cout << "\n==================== PART 2B: DIGITAL OPTIONS ====================" << endl << endl;
-        
-        cout << "--- Testing Digital Call Option ---" << endl;
-        DigitalCallOption* digiCall = new DigitalCallOption(T, K);
-        cout << "Created DigitalCallOption with expiry=" << digiCall->getExpiry() 
-             << ", strike=" << digiCall->getStrike() << endl;
-        cout << "Payoff at S=" << testPrice1 << ": " << digiCall->payoff(testPrice1) << endl;
-        cout << "Payoff at S=" << testPrice2 << ": " << digiCall->payoff(testPrice2) << endl;
-        cout << "Payoff at S=K=" << K << ": " << digiCall->payoff(K) << endl;
-        
-        BlackScholesPricer bsDigiCall(digiCall, S0, r, sigma);
-        double bsDigiCallPrice = bsDigiCall();
-        double bsDigiCallDelta = bsDigiCall.delta();
-        cout << "BS Digital Call Price: " << bsDigiCallPrice << endl;
-        cout << "BS Digital Call Delta: " << bsDigiCallDelta << endl;
-        
-        cout << "\n--- Testing Digital Put Option ---" << endl;
-        DigitalPutOption* digiPut = new DigitalPutOption(T, K);
-        cout << "Created DigitalPutOption with expiry=" << digiPut->getExpiry() 
-             << ", strike=" << digiPut->getStrike() << endl;
-        cout << "Payoff at S=" << testPrice1 << ": " << digiPut->payoff(testPrice1) << endl;
-        cout << "Payoff at S=" << testPrice2 << ": " << digiPut->payoff(testPrice2) << endl;
-        
-        BlackScholesPricer bsDigiPut(digiPut, S0, r, sigma);
-        double bsDigiPutPrice = bsDigiPut();
-        double bsDigiPutDelta = bsDigiPut.delta();
-        cout << "BS Digital Put Price: " << bsDigiPutPrice << endl;
-        cout << "BS Digital Put Delta: " << bsDigiPutDelta << endl;
-        
-        // Digital parity: Digital Call + Digital Put = e^(-rT)
-        double digiParity = bsDigiCallPrice + bsDigiPutPrice;
-        double expectedDigiParity = exp(-r * T);
-        cout << "\nDigital Parity Check:" << endl;
-        cout << "Digital Call + Digital Put = " << digiParity << endl;
-        cout << "e^(-rT) = " << expectedDigiParity << endl;
-        cout << "Difference: " << abs(digiParity - expectedDigiParity) << " (should be ~0)" << endl;
-
-        // ==================== PART 3: ASIAN OPTIONS ====================
-        cout << "\n==================== PART 3: ASIAN OPTIONS ====================" << endl << endl;
-        
-        // Create time steps for Asian option
-        vector<double> timeSteps;
-        int m = 12; // Monthly observations
-        for(int i = 1; i <= m; i++) {
-            timeSteps.push_back(i * T / m);
-        }
-        
-        cout << "--- Testing Asian Call Option ---" << endl;
-        AsianCallOption* asianCall = new AsianCallOption(timeSteps, T, K);
-        cout << "Created AsianCallOption with expiry=" << asianCall->getExpiry() 
-             << ", strike=" << K << ", m=" << m << " time steps" << endl;
-        cout << "Is Asian? " << (asianCall->isAsian() ? "YES" : "NO") << endl;
-        
-        // Test payoffPath
-        vector<double> testPath = {95, 98, 102, 105, 103, 107, 110, 108, 112, 115, 113, 118};
-        double avgPrice = 0;
-        for(double p : testPath) avgPrice += p;
-        avgPrice /= testPath.size();
-        cout << "Test path average: " << avgPrice << endl;
-        cout << "Asian Call payoffPath: " << asianCall->payoffPath(testPath) << endl;
-        cout << "Manual calculation: max(0, " << avgPrice << " - " << K << ") = " 
-             << max(0.0, avgPrice - K) << endl;
-        
-        cout << "\n--- Testing Asian Put Option ---" << endl;
-        AsianPutOption* asianPut = new AsianPutOption(timeSteps, T, K);
-        cout << "Created AsianPutOption with expiry=" << asianPut->getExpiry() 
-             << ", strike=" << K << ", m=" << m << " time steps" << endl;
-        cout << "Asian Put payoffPath: " << asianPut->payoffPath(testPath) << endl;
-        
-        // Test CRRPricer rejection of Asian options
-        cout << "\n--- Testing CRRPricer Asian Option Rejection ---" << endl;
-        try {
-            CRRPricer crrAsian(asianCall, N, S0, u, d, r);
-            cout << "ERROR: CRRPricer should have thrown exception for Asian option!" << endl;
-        } catch (const std::invalid_argument& e) {
-            cout << "SUCCESS: CRRPricer correctly rejected Asian option" << endl;
-            cout << "Exception message: " << e.what() << endl;
-        }
-
-        // ==================== PART 4: MT RANDOM NUMBER GENERATOR ====================
-        cout << "\n==================== PART 4: MT RANDOM NUMBER GENERATOR ====================" << endl << endl;
-        
-        cout << "--- Testing MT Singleton ---" << endl;
-        cout << "Generating 10 uniform random numbers [0,1]:" << endl;
-        for(int i = 0; i < 10; i++) {
-            cout << "  " << i+1 << ": " << MT::rand_unif() << endl;
-        }
-        
-        cout << "\nGenerating 10 standard normal random numbers:" << endl;
-        double sum_norm = 0, sum_sq_norm = 0;
-        for(int i = 0; i < 10; i++) {
-            double z = MT::rand_norm();
-            sum_norm += z;
-            sum_sq_norm += z * z;
-            cout << "  " << i+1 << ": " << z << endl;
-        }
-        cout << "Sample mean: " << sum_norm / 10 << " (should be ~0)" << endl;
-        cout << "Sample variance: " << sum_sq_norm / 10 - (sum_norm/10)*(sum_norm/10) 
-             << " (should be ~1)" << endl;
-
-        // ==================== PART 5: BLACK-SCHOLES MONTE CARLO ====================
-        cout << "\n==================== PART 5: BLACK-SCHOLES MONTE CARLO ====================" << endl << endl;
-        
-        cout << "--- Testing MC Pricer for European Call ---" << endl;
-        BlackScholesMCPricer mcCall(euroCall, S0, r, sigma);
-        cout << "Created BlackScholesMCPricer for Call option" << endl;
-        cout << "Initial nbPaths: " << mcCall.getNbPaths() << endl;
-        
-        // Test exception before generation
-        cout << "\nTesting exception before path generation:" << endl;
-        try {
-            double price = mcCall();
-            cout << "ERROR: Should have thrown exception!" << endl;
-        } catch (const std::invalid_argument& e) {
-            cout << "SUCCESS: Exception caught: " << e.what() << endl;
-        }
-        
-        // Generate paths progressively
-        cout << "\n--- Progressive Path Generation ---" << endl;
-        int batches[] = {1000, 5000, 10000, 50000};
-        for(int batch : batches) {
-            mcCall.generate(batch);
-            double mcPrice = mcCall();
-            vector<double> ci = mcCall.confidenceInterval();
-            cout << "\nAfter " << mcCall.getNbPaths() << " paths:" << endl;
-            cout << "  MC Price: " << mcPrice << endl;
-            cout << "  95% CI: [" << ci[0] << ", " << ci[1] << "]" << endl;
-            cout << "  CI Width: " << (ci[1] - ci[0]) << endl;
-            cout << "  BS Price: " << bsCallPrice << endl;
-            cout << "  Difference: " << abs(mcPrice - bsCallPrice) << endl;
-            cout << "  BS in CI? " << (bsCallPrice >= ci[0] && bsCallPrice <= ci[1] ? "YES" : "NO") << endl;
-        }
-        
-        cout << "\n--- Testing MC Pricer for European Put ---" << endl;
-        BlackScholesMCPricer mcPut(euroPut, S0, r, sigma);
-        mcPut.generate(100000);
-        double mcPutPrice = mcPut();
-        vector<double> putCI = mcPut.confidenceInterval();
-        cout << "MC Put Price: " << mcPutPrice << " (after " << mcPut.getNbPaths() << " paths)" << endl;
-        cout << "95% CI: [" << putCI[0] << ", " << putCI[1] << "]" << endl;
-        cout << "BS Put Price: " << bsPutPrice << endl;
-        cout << "Difference: " << abs(mcPutPrice - bsPutPrice) << endl;
-        
-        cout << "\n--- Testing MC Pricer for Asian Call ---" << endl;
-        BlackScholesMCPricer mcAsianCall(asianCall, S0, r, sigma);
-        mcAsianCall.generate(100000);
-        double mcAsianPrice = mcAsianCall();
-        vector<double> asianCI = mcAsianCall.confidenceInterval();
-        cout << "MC Asian Call Price: " << mcAsianPrice << " (after " << mcAsianCall.getNbPaths() << " paths)" << endl;
-        cout << "95% CI: [" << asianCI[0] << ", " << asianCI[1] << "]" << endl;
-        cout << "CI Width: " << (asianCI[1] - asianCI[0]) << endl;
-        cout << "(Note: Asian options are typically cheaper than European calls)" << endl;
-        cout << "European Call Price (BS): " << bsCallPrice << endl;
-        cout << "Ratio (Asian/European): " << mcAsianPrice / bsCallPrice << endl;
-        
-        cout << "\n--- Testing MC Pricer for Asian Put ---" << endl;
-        BlackScholesMCPricer mcAsianPut(asianPut, S0, r, sigma);
-        mcAsianPut.generate(100000);
-        double mcAsianPutPrice = mcAsianPut();
-        vector<double> asianPutCI = mcAsianPut.confidenceInterval();
-        cout << "MC Asian Put Price: " << mcAsianPutPrice << " (after " << mcAsianPut.getNbPaths() << " paths)" << endl;
-        cout << "95% CI: [" << asianPutCI[0] << ", " << asianPutCI[1] << "]" << endl;
-
-        // ==================== CONVERGENCE ANALYSIS ====================
-        cout << "\n==================== CONVERGENCE ANALYSIS ====================" << endl << endl;
-        
-        cout << "--- Testing MC Convergence (European Call) ---" << endl;
-        BlackScholesMCPricer convergenceTest(euroCall, S0, r, sigma);
-        cout << "True Price (BS): " << bsCallPrice << endl << endl;
-        
-        int nPaths[] = {100, 500, 1000, 5000, 10000, 50000, 100000};
-        cout << setw(10) << "N Paths" << setw(15) << "MC Price" << setw(15) << "Error" 
-             << setw(20) << "CI Width" << setw(10) << "BS in CI?" << endl;
-        cout << string(70, '-') << endl;
-        
-        for(int n : nPaths) {
-            BlackScholesMCPricer tempPricer(euroCall, S0, r, sigma);
-            tempPricer.generate(n);
-            double price = tempPricer();
-            vector<double> ci = tempPricer.confidenceInterval();
-            double error = abs(price - bsCallPrice);
-            double ciWidth = ci[1] - ci[0];
-            bool bsInCI = (bsCallPrice >= ci[0] && bsCallPrice <= ci[1]);
-            
-            cout << setw(10) << n << setw(15) << price << setw(15) << error 
-                 << setw(20) << ciWidth << setw(10) << (bsInCI ? "YES" : "NO") << endl;
-        }
-        
-        // ==================== STRESS TESTS ====================
-        cout << "\n==================== STRESS TESTS ====================" << endl << endl;
-        
-        cout << "--- Testing Edge Cases ---" << endl;
-        
-        // Deep ITM/OTM options
-        cout << "\n1. Deep ITM Call (S=150, K=100):" << endl;
-        CallOption deepITMCall(T, K);
-        BlackScholesMCPricer mcDeepITM(&deepITMCall, 150.0, r, sigma);
-        mcDeepITM.generate(10000);
-        cout << "   MC Price: " << mcDeepITM() << endl;
-        BlackScholesPricer bsDeepITM(&deepITMCall, 150.0, r, sigma);
-        cout << "   BS Price: " << bsDeepITM() << endl;
-        
-        cout << "\n2. Deep OTM Call (S=50, K=100):" << endl;
-        CallOption deepOTMCall(T, K);
-        BlackScholesMCPricer mcDeepOTM(&deepOTMCall, 50.0, r, sigma);
-        mcDeepOTM.generate(10000);
-        cout << "   MC Price: " << mcDeepOTM() << endl;
-        BlackScholesPricer bsDeepOTM(&deepOTMCall, 50.0, r, sigma);
-        cout << "   BS Price: " << bsDeepOTM() << endl;
-        
-        // High volatility
-        cout << "\n3. High Volatility (sigma=0.8):" << endl;
-        BlackScholesMCPricer mcHighVol(euroCall, S0, r, 0.8);
-        mcHighVol.generate(10000);
-        cout << "   MC Price: " << mcHighVol() << endl;
-        BlackScholesPricer bsHighVol(euroCall, S0, r, 0.8);
-        cout << "   BS Price: " << bsHighVol() << endl;
-        
-        // Short expiry
-        cout << "\n4. Short Expiry (T=0.1):" << endl;
-        CallOption shortCall(0.1, K);
-        BlackScholesMCPricer mcShort(&shortCall, S0, r, sigma);
-        mcShort.generate(10000);
-        cout << "   MC Price: " << mcShort() << endl;
-        BlackScholesPricer bsShort(&shortCall, S0, r, sigma);
-        cout << "   BS Price: " << bsShort() << endl;
-        
-        // ==================== SUMMARY ====================
-        cout << "\n==================== TEST SUMMARY ====================" << endl << endl;
-        
-        cout << "✓ European Vanilla Options: PASSED" << endl;
-        cout << "✓ Black-Scholes Analytical Pricing: PASSED" << endl;
-        cout << "✓ CRR Binomial Tree: PASSED" << endl;
-        cout << "✓ Digital Options: PASSED" << endl;
-        cout << "✓ Asian Options: PASSED" << endl;
-        cout << "✓ MT Random Number Generator: PASSED" << endl;
-        cout << "✓ Monte Carlo Simulation: PASSED" << endl;
-        cout << "✓ Confidence Intervals: PASSED" << endl;
-        cout << "✓ Exception Handling: PASSED" << endl;
-        cout << "✓ Convergence Analysis: PASSED" << endl;
-        
-        // Cleanup
-        delete euroCall;
-        delete euroPut;
-        delete digiCall;
-        delete digiPut;
-        delete asianCall;
-        delete asianPut;
-        
-        cout << "\n============================================" << endl;
-        cout << "   ALL TESTS COMPLETED SUCCESSFULLY!" << endl;
-        cout << "============================================" << endl;
-        
-    } catch (const std::exception& e) {
-        cout << "\n❌ CRITICAL ERROR: " << e.what() << endl;
-        return 1;
+    // ============================================================
+    // MONTE CARLO PRICING
+    // ============================================================
+    cout << "MONTE CARLO PRICING" << endl;
+    cout << "----------------------------------------" << endl;
+    
+    int num_simulations = 100000;
+    cout << "Using " << num_simulations << " simulations" << endl << endl;
+    
+    // European Call
+    BlackScholesMCPricer mcEurCall(&eurCall, S0, r, vol);
+    mcEurCall.generate(num_simulations);
+    vector<double> ciCall = mcEurCall.confidenceInterval();
+    cout << "European Call:         " << mcEurCall() << endl;
+    cout << "  95% CI:              [" << ciCall[0] << ", " << ciCall[1] << "]" << endl;
+    
+    // Asian Call
+    vector<double> timeSteps;
+    for(int i = 1; i <= 5; i++) {
+        timeSteps.push_back(i * T / 5.0);
     }
+    AsianCallOption asianCall(timeSteps, K);
+    BlackScholesMCPricer mcAsianCall(&asianCall, S0, r, vol);
+    mcAsianCall.generate(num_simulations);
+    vector<double> ciAsianCall = mcAsianCall.confidenceInterval();
+    cout << "Asian Call:            " << mcAsianCall() << endl;
+    cout << "  95% CI:              [" << ciAsianCall[0] << ", " << ciAsianCall[1] << "]" << endl;
+    
+    // European Digital Call
+    BlackScholesMCPricer mcDigCall(&eurDigCall, S0, r, vol);
+    mcDigCall.generate(num_simulations);
+    vector<double> ciDigCall = mcDigCall.confidenceInterval();
+    cout << "European Digital Call: " << mcDigCall() << endl;
+    cout << "  95% CI:              [" << ciDigCall[0] << ", " << ciDigCall[1] << "]" << endl;
+    
+    // European Put
+    BlackScholesMCPricer mcEurPut(&eurPut, S0, r, vol);
+    mcEurPut.generate(num_simulations);
+    vector<double> ciPut = mcEurPut.confidenceInterval();
+    cout << "European Put:          " << mcEurPut() << endl;
+    cout << "  95% CI:              [" << ciPut[0] << ", " << ciPut[1] << "]" << endl;
+    
+    // European Digital Put
+    BlackScholesMCPricer mcDigPut(&eurDigPut, S0, r, vol);
+    mcDigPut.generate(num_simulations);
+    vector<double> ciDigPut = mcDigPut.confidenceInterval();
+    cout << "European Digital Put:  " << mcDigPut() << endl;
+    cout << "  95% CI:              [" << ciDigPut[0] << ", " << ciDigPut[1] << "]" << endl;
+    
+    // Asian Put
+    AsianPutOption asianPut(timeSteps, K);
+    BlackScholesMCPricer mcAsianPut(&asianPut, S0, r, vol);
+    mcAsianPut.generate(num_simulations);
+    vector<double> ciAsianPut = mcAsianPut.confidenceInterval();
+    cout << "Asian Put:             " << mcAsianPut() << endl;
+    cout << "  95% CI:              [" << ciAsianPut[0] << ", " << ciAsianPut[1] << "]" << endl;
+    
+    cout << "\nWARNING: Monte Carlo cannot price American options efficiently" << endl;
+    cout << "(requires LSM or similar method, not implemented)" << endl;
+    cout << endl;
+
+    // ============================================================
+    // COMPARISON TABLE
+    // ============================================================
+    cout << "========================================" << endl;
+    cout << "COMPARISON TABLE" << endl;
+    cout << "========================================" << endl;
+    cout << left << setw(25) << "Option Type" 
+         << setw(15) << "CRR" 
+         << setw(15) << "Black-Scholes" 
+         << setw(15) << "Monte Carlo" << endl;
+    cout << string(70, '-') << endl;
+    
+    cout << left << setw(25) << "European Call" 
+         << setw(15) << crrEurCall() 
+         << setw(15) << bsEurCall() 
+         << setw(15) << mcEurCall() << endl;
+    
+    cout << left << setw(25) << "European Digital Call" 
+         << setw(15) << crrDigCall() 
+         << setw(15) << bsDigCall() 
+         << setw(15) << mcDigCall() << endl;
+    
+    cout << left << setw(25) << "American Call" 
+         << setw(15) << crrAmCall() 
+         << setw(15) << "N/A" 
+         << setw(15) << "N/A" << endl;
+    
+    cout << left << setw(25) << "European Put" 
+         << setw(15) << crrEurPut() 
+         << setw(15) << bsEurPut() 
+         << setw(15) << mcEurPut() << endl;
+    
+    cout << left << setw(25) << "European Digital Put" 
+         << setw(15) << crrDigPut() 
+         << setw(15) << bsDigPut() 
+         << setw(15) << mcDigPut() << endl;
+    
+    cout << left << setw(25) << "American Put" 
+         << setw(15) << crrAmPut() 
+         << setw(15) << "N/A" 
+         << setw(15) << "N/A" << endl;
+    
+    cout << left << setw(25) << "Asian Call" 
+         << setw(15) << "N/A" 
+         << setw(15) << "N/A" 
+         << setw(15) << mcAsianCall() << endl;
+    
+    cout << left << setw(25) << "Asian Put" 
+         << setw(15) << "N/A" 
+         << setw(15) << "N/A" 
+         << setw(15) << mcAsianPut() << endl;
+    
+    cout << endl;
+    
+    // ============================================================
+    // CONVERGENCE TEST (CRR vs Black-Scholes)
+    // ============================================================
+    cout << "========================================" << endl;
+    cout << "CONVERGENCE TEST" << endl;
+    cout << "CRR with Black-Scholes parameters (N increasing)" << endl;
+    cout << "========================================" << endl;
+    
+    cout << left << setw(10) << "N" 
+         << setw(20) << "European Call CRR" 
+         << setw(20) << "BS Price" 
+         << setw(15) << "Difference" << endl;
+    cout << string(65, '-') << endl;
+    
+    double bsCallPrice = bsEurCall();
+    int nValues[] = {5, 10, 50, 100, 500};
+    for(int i = 0; i < 5; i++) {
+        int n = nValues[i];
+        CallOption testCall(T, K);
+        CRRPricer crrTest(&testCall, n, S0, r, vol);
+        double crrPrice = crrTest();
+        cout << left << setw(10) << n 
+             << setw(20) << crrPrice 
+             << setw(20) << bsCallPrice 
+             << setw(15) << abs(crrPrice - bsCallPrice) << endl;
+    }
+    
+    cout << "\n========================================" << endl;
+    cout << "TEST COMPLETE" << endl;
+    cout << "========================================" << endl;
     
     return 0;
 }
