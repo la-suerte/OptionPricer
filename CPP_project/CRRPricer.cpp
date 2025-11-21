@@ -33,9 +33,9 @@ CRRPricer::CRRPricer(Option* option, int depth, double asset_price, double r, do
       closed_form(false), exercised(nullptr) {
     
     double h = option->getExpiry()/N;
-    double exponent = (r + (std::pow(volatility,2)/2))*h + volatility*std::sqrt(h);
+    double exponent = (r + (volatility*volatility/2))*h + volatility*std::sqrt(h);
     this->up = std::exp(exponent) - 1;
-    exponent = (r + (std::pow(volatility,2)/2))*h - volatility*std::sqrt(h);
+    exponent = (r + (volatility*volatility/2))*h - volatility*std::sqrt(h);
     this->down = std::exp(exponent) - 1;
     this->interest_rate = std::exp(r*h) - 1;
     
@@ -66,25 +66,45 @@ double CRRPricer::max(double a, double b) {
     return b;
 }
 
+
 void CRRPricer::compute() {
     double S0 = asset_price;
-    double St;
-    
-    for(int i = 0; i <= N; i++) {
-        St = S0 * pow(1+up, i) * pow(1+down, N-i);
-        _tree->setNode(N, i, option->payoff(St));
+    double spot_down_mult = 1.0 + down;
+    double mult_factor = (1.0 + up) / spot_down_mult; 
+    double q = (interest_rate - down) / (up - down);
+
+    double St = S0;
+    for(int i = 0 ; i < N ; i++)
+    {
+        St*=spot_down_mult;
     }
     
-    double q = (interest_rate - down)/(up - down);
+    for(int i = 0 ; i <= N ; i++)
+    {
+        _tree->setNode(N, i, option->payoff(St));
+        St *= mult_factor; 
+    }
+    
+    St = S0;
+    for(int i = 0 ; i < N ; i++)
+    {
+        St*=spot_down_mult;
+    }
 
     for(int i = N-1; i >= 0; i--) {
+        
+
+        St /= spot_down_mult; 
+        
+        double current_spot_j = St;
+
         for(int j = 0; j <= i; j++) {
-            double value = (q*_tree->getNode(i+1, j+1) + (1-q)*_tree->getNode(i+1, j))/(1+interest_rate);
+            double value = (q * _tree->getNode(i+1, j+1) + (1 - q) * _tree->getNode(i+1, j)) / (1 + interest_rate);
             
             if(!option->isAmericanOption()) {
                 _tree->setNode(i, j, value);
             } else {
-                double St_current = option->payoff(S0*std::pow(1+up, j)*std::pow(1+down, i-j));
+                double St_current = option->payoff(current_spot_j);
                 _tree->setNode(i, j, max(value, St_current));
                 
                 if(value <= St_current) {
@@ -93,8 +113,10 @@ void CRRPricer::compute() {
                     exercised->setNode(i, j, false);
                 }
             }
+            current_spot_j *= mult_factor; 
         }
     }
+    
     computed = true;
 }
 
@@ -109,7 +131,6 @@ int CRRPricer::fact(int N) {
     }
     return sum;
 }
-
 double CRRPricer::operator()(bool closed_form) {
     if(!computed) {
         compute();
@@ -117,21 +138,31 @@ double CRRPricer::operator()(bool closed_form) {
     
     if(closed_form) {
         double sum = 0.0;
-        double q = (interest_rate - down)/(up - down);
-        double discount = 1.0/pow(1+interest_rate, N);
+        double q = (interest_rate - down) / (up - down);
+        double one_minus_q = 1.0 - q;
         
-        for(int i = 0; i <= N; i++) {
-            // Calculate binomial coefficient more safely
-            double coef = 1.0;
-            for(int j = 0; j < i; j++) {
-                coef *= (double)(N - j) / (double)(j + 1);
-            }
-            sum += coef * pow(q, i) * pow(1-q, N-i) * _tree->getNode(N, i);
+        double discount = 1.0;
+        double discount_step = 1.0 / (1.0 + interest_rate);
+        for(int i = 0; i < N; i++) {
+            discount *= discount_step;
+        }
+
+
+        double prob_weight = 1.0;
+        for(int i = 0; i < N; i++) {
+            prob_weight *= one_minus_q;
         }
         
+        double q_ratio = q / one_minus_q;
+
+        for(int i = 0; i <= N; i++) {
+            sum += prob_weight * _tree->getNode(N, i);
+            if (i < N) {
+                prob_weight *= ((double)(N - i) / (i + 1)) * q_ratio;
+            }
+        }
         return discount * sum;
     }
-    
     return _tree->getNode(0, 0);
 }
 

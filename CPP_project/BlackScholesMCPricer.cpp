@@ -14,40 +14,68 @@ double BlackScholesMCPricer::getNbPaths() {
     return nbPaths;
 }
 
-void BlackScholesMCPricer::generate(int nb_paths) {
+void BlackScholesMCPricer::generate(int nb_paths)
+{
     double S0 = initial_price;
     double r = interest_rate;
     double T = option->getExpiry();
     double discount = std::exp(-r * T);
+
+    double vanilla_drift = 0.0;
+    double vanilla_diffusion = 0.0;
     
-    for(int i = 0; i < nb_paths; i++) {
+    if (!option->isAsianOption()) {
+        vanilla_drift = (r - 0.5 * sigma * sigma) * T;
+        vanilla_diffusion = sigma * std::sqrt(T);
+    }
+
+    std::vector<double> asian_drifts;
+    std::vector<double> asian_diffusions;
+    AsianOption* asian = nullptr;
+
+    if (option->isAsianOption()) {
+        asian = dynamic_cast<AsianOption*>(option);
+        std::vector<double> timeSteps = asian->getTimeSteps();
+        double prev_t = 0.0;
+        
+        asian_drifts.resize(timeSteps.size());
+        asian_diffusions.resize(timeSteps.size());
+
+        for(size_t t = 0; t < timeSteps.size(); t++) {
+            double dt = timeSteps[t] - prev_t;
+            asian_drifts[t] = (r - 0.5 * sigma * sigma) * dt;
+            asian_diffusions[t] = sigma * std::sqrt(dt);
+            prev_t = timeSteps[t];
+        }
+    }
+
+    for(int i = 0 ; i < nb_paths ; i++)
+    {
         double payoff;
 
-        if(option->isAsianOption()) {
-            AsianOption* asian = dynamic_cast<AsianOption*>(option);
-            std::vector<double> timeSteps = asian->getTimeSteps();
+        if(option->isAsianOption())
+        {
             std::vector<double> St_path;
-
-            double prev_t = 0.0;
             double St = S0;
 
-            for(int t = 0; t < timeSteps.size(); t++) {
-                double dt = timeSteps[t] - prev_t;
+            for(size_t t = 0 ; t < asian_drifts.size() ; t++)
+            {
                 double Z = MT::rand_norm();
-                St = St * std::exp((r - sigma*sigma/2.0)*dt + sigma*std::sqrt(dt)*Z);
+                St *= std::exp(asian_drifts[t] + asian_diffusions[t] * Z);
                 St_path.push_back(St);
-                prev_t = timeSteps[t];
             }
             payoff = asian->payoffPath(St_path);
-        } else {
+        }
+        else
+        {
             double Z = MT::rand_norm();
-            double ST = S0 * std::exp((r - sigma*sigma/2.0)*T + sigma*std::sqrt(T)*Z);
+            double ST = S0 * std::exp(vanilla_drift + vanilla_diffusion * Z);
             payoff = option->payoff(ST);
         }
 
         double d_payoff = payoff * discount;
         sumPayoffs += d_payoff;
-        sumSquaredPayoffs += d_payoff*d_payoff;
+        sumSquaredPayoffs += d_payoff * d_payoff;
     }
 
     nbPaths += nb_paths;
