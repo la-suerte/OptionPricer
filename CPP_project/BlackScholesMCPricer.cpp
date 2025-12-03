@@ -10,7 +10,7 @@ BlackScholesMCPricer::BlackScholesMCPricer(Option* o, double ip, double ir, doub
     : option(o), initial_price(ip), interest_rate(ir), sigma(vol), 
       nbPaths(0), sumPayoffs(0.0), sumSquaredPayoffs(0.0) {}
 
-double BlackScholesMCPricer::getNbPaths() {
+int BlackScholesMCPricer::getNbPaths() {
     return nbPaths;
 }
 

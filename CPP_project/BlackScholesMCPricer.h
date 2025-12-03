@@ -16,7 +16,7 @@ class BlackScholesMCPricer{
         Option* option;
     public:
         BlackScholesMCPricer(Option* o, double ip, double ir, double vol);
-        double getNbPaths();
+        int getNbPaths();
         void generate(int nb_paths);
         double operator()();
         std::vector<double> confidenceInterval();
