@@ -17,7 +17,6 @@ class CRRPricer{
         bool closed_form;
         BinaryTree<bool>* exercised;
         double max(double a, double b);
-        int fact(int N);
     public:
         CRRPricer(Option* option, int depth, double asset_price, double up, double down, double interest_rate);
         CRRPricer(Option* option, int depth, double asset_price, double r, double volatility);

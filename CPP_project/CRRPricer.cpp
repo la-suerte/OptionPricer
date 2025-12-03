@@ -124,13 +124,6 @@ double CRRPricer::get(int a, int b) {
     return _tree->getNode(a, b);
 }
 
-int CRRPricer::fact(int N) {
-    int sum = 1;
-    for(int i = 1; i <= N; i++) {
-        sum = sum * i;
-    }
-    return sum;
-}
 double CRRPricer::operator()(bool closed_form) {
     if(!computed) {
         compute();

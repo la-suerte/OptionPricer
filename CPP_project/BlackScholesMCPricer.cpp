@@ -48,14 +48,14 @@ void BlackScholesMCPricer::generate(int nb_paths)
             prev_t = timeSteps[t];
         }
     }
-
+    std::vector<double> St_path;
     for(int i = 0 ; i < nb_paths ; i++)
     {
         double payoff;
 
         if(option->isAsianOption())
         {
-            std::vector<double> St_path;
+            St_path.clear();
             double St = S0;
 
             for(size_t t = 0 ; t < asian_drifts.size() ; t++)
